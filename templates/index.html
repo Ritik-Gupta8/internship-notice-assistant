@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎓 Internship Notice Assistant | Turn Notices Into Action Plans</title>
+  <meta name="description" content="AI-powered tool that converts messy internship placement notices into structured action plans, eligibility checklists, and ready-to-send application emails." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Vue.js 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+  <!-- Marked.js for Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <style>
+    /* ─── CSS Variables ─── */
+    :root {
+      --bg-deep:     #0a0d14;
+      --bg-card:     rgba(255,255,255,0.04);
+      --bg-card-hover: rgba(255,255,255,0.07);
+      --border:      rgba(255,255,255,0.08);
+      --border-focus: rgba(99,179,237,0.6);
+      --accent:      #63b3ed;
+      --accent2:     #9f7aea;
+      --accent3:     #68d391;
+      --text-primary:   #f0f4f8;
+      --text-secondary: #8899aa;
+      --text-muted:     #556677;
+      --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --gradient-2: linear-gradient(135deg, #63b3ed 0%, #9f7aea 100%);
+      --shadow-glow: 0 0 40px rgba(99,179,237,0.15);
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+
+    /* ─── Reset & Base ─── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── Animated Background ─── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 0%, rgba(102,126,234,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 100%, rgba(159,122,234,0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 60% at 50% 50%, rgba(99,179,237,0.05) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Floating orbs */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+      animation: float linear infinite;
+    }
+    .orb-1 {
+      width: 400px; height: 400px;
+      background: rgba(102,126,234,0.08);
+      top: -100px; left: -100px;
+      animation-duration: 20s;
+    }
+    .orb-2 {
+      width: 350px; height: 350px;
+      background: rgba(159,122,234,0.07);
+      bottom: -80px; right: -80px;
+      animation-duration: 25s;
+      animation-direction: reverse;
+    }
+    .orb-3 {
+      width: 250px; height: 250px;
+      background: rgba(99,179,237,0.06);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      animation-duration: 30s;
+    }
+    @keyframes float {
+      0%   { transform: translateY(0px) translateX(0px); }
+      33%  { transform: translateY(-20px) translateX(10px); }
+      66%  { transform: translateY(10px) translateX(-15px); }
+      100% { transform: translateY(0px) translateX(0px); }
+    }
+
+    /* ─── Layout ─── */
+    .app-wrapper {
+      position: relative;
+      z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px 80px;
+    }
+
+    /* ─── Header ─── */
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(99,179,237,0.1);
+      border: 1px solid rgba(99,179,237,0.25);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      background: var(--accent3);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -1px;
+      background: var(--gradient-2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 16px;
+    }
+    .subtitle {
+      font-size: 16px;
+      color: var(--text-secondary);
+      max-width: 480px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* ─── Card ─── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      transition: border-color 0.3s;
+    }
+    .card:hover {
+      border-color: rgba(255,255,255,0.12);
+    }
+
+    /* ─── Tab Switcher ─── */
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      background: rgba(0,0,0,0.3);
+      border-radius: var(--radius-sm);
+      padding: 4px;
+      margin-bottom: 28px;
+    }
+    .tab-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      color: var(--text-secondary);
+      background: transparent;
+    }
+    .tab-btn.active {
+      background: var(--gradient-2);
+      color: white;
+      box-shadow: 0 4px 15px rgba(99,179,237,0.3);
+    }
+    .tab-btn:hover:not(.active) {
+      background: rgba(255,255,255,0.06);
+      color: var(--text-primary);
+    }
+
+    /* ─── Textarea ─── */
+    .field-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.3px;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+    textarea {
+      width: 100%;
+      min-height: 220px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 16px;
+      resize: vertical;
+      transition: border-color 0.25s, box-shadow 0.25s;
+      outline: none;
+    }
+    textarea::placeholder { color: var(--text-muted); }
+    textarea:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(99,179,237,0.1);
+    }
+
+    /* ─── Upload Zone ─── */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-sm);
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background: rgba(0,0,0,0.2);
+      position: relative;
+    }
+    .upload-zone:hover, .upload-zone.dragging {
+      border-color: var(--accent);
+      background: rgba(99,179,237,0.05);
+      box-shadow: 0 0 20px rgba(99,179,237,0.1);
+    }
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .upload-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      display: block;
+    }
+    .upload-text {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+    .upload-hint {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Image preview */
+    .preview-wrap {
+      position: relative;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .preview-wrap img {
+      width: 100%;
+      max-height: 300px;
+      object-fit: contain;
+      background: rgba(0,0,0,0.4);
+      display: block;
+    }
+    .preview-remove {
+      position: absolute;
+      top: 10px; right: 10px;
+      background: rgba(220,50,50,0.8);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 30px; height: 30px;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s;
+    }
+    .preview-remove:hover { background: rgba(220,50,50,1); }
+
+    /* ─── Submit Button ─── */
+    .btn-primary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      margin-top: 24px;
+      padding: 16px 24px;
+      background: var(--gradient-2);
+      color: white;
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 20px rgba(99,179,237,0.3);
+    }
+    .btn-primary:hover:not(:disabled) {
+      opacity: 0.92;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(99,179,237,0.4);
+    }
+    .btn-primary:active:not(:disabled) {
+      transform: translateY(0);
+    }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Spinner */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Error Banner ─── */
+    .error-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: rgba(220,53,69,0.1);
+      border: 1px solid rgba(220,53,69,0.3);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-top: 20px;
+      color: #fc8181;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ─── Result Section ─── */
+    .result-section {
+      margin-top: 32px;
+    }
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .result-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .result-title::before {
+      content: '';
+      display: inline-block;
+      width: 4px; height: 20px;
+      background: var(--gradient-2);
+      border-radius: 2px;
+    }
+
+    .copy-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      background: rgba(99,179,237,0.1);
+      border: 1px solid rgba(99,179,237,0.25);
+      border-radius: 8px;
+      color: var(--accent);
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover {
+      background: rgba(99,179,237,0.18);
+    }
+
+    /* ─── Markdown Rendering ─── */
+    .markdown-body {
+      font-size: 14.5px;
+      line-height: 1.75;
+      color: var(--text-primary);
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 28px 32px;
+    }
+    .markdown-body h2 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--accent);
+      margin: 28px 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .markdown-body h2:first-child { margin-top: 0; }
+    .markdown-body h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--accent2);
+      margin: 20px 0 8px;
+    }
+    .markdown-body p { margin-bottom: 12px; }
+    .markdown-body ul, .markdown-body ol {
+      padding-left: 22px;
+      margin-bottom: 12px;
+    }
+    .markdown-body li { margin-bottom: 6px; }
+    .markdown-body strong { color: #e2e8f0; font-weight: 600; }
+    .markdown-body em { color: var(--text-secondary); }
+    .markdown-body code {
+      font-family: 'Fira Code', monospace;
+      font-size: 13px;
+      background: rgba(99,179,237,0.1);
+      color: var(--accent);
+      padding: 2px 7px;
+      border-radius: 5px;
+    }
+    .markdown-body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    .markdown-body th {
+      background: rgba(99,179,237,0.1);
+      color: var(--accent);
+      font-weight: 600;
+      text-align: left;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+    }
+    .markdown-body td {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+    .markdown-body tr:nth-child(even) td {
+      background: rgba(255,255,255,0.02);
+    }
+    .markdown-body blockquote {
+      border-left: 3px solid var(--accent2);
+      padding: 8px 16px;
+      color: var(--text-secondary);
+      margin: 16px 0;
+      background: rgba(159,122,234,0.05);
+      border-radius: 0 8px 8px 0;
+    }
+    .markdown-body hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 24px 0;
+    }
+    /* Checkbox styling for task lists */
+    .markdown-body input[type="checkbox"] {
+      accent-color: var(--accent3);
+    }
+
+    /* ─── Footer ─── */
+    footer {
+      text-align: center;
+      margin-top: 60px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    footer a:hover { text-decoration: underline; }
+
+    /* ─── Transitions ─── */
+    .fade-enter-active, .fade-leave-active { transition: all 0.35s ease; }
+    .fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(12px); }
+
+    .slide-enter-active, .slide-leave-active { transition: all 0.4s ease; }
+    .slide-enter-from { opacity: 0; transform: translateY(20px); }
+    .slide-leave-to { opacity: 0; }
+  </style>
+</head>
+<body>
+{% raw %}
+
+<!-- Floating orbs for ambiance -->
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<div id="app">
+  <div class="app-wrapper">
+
+    <!-- Header -->
+    <header>
+      <div class="badge">
+        <span class="badge-dot"></span>
+        AI-Powered &bull; Gemini Vision
+      </div>
+      <h1>Internship Notice<br/>Assistant</h1>
+      <p class="subtitle">
+        Paste a notice or upload a screenshot — get an instant structured action plan, eligibility checklist &amp; ready-to-send email.
+      </p>
+    </header>
+
+    <!-- Input Card -->
+    <div class="card">
+
+      <!-- Tab Bar -->
+      <div class="tab-bar" role="tablist">
+        <button
+          id="tab-text"
+          class="tab-btn"
+          :class="{ active: activeTab === 'text' }"
+          @click="activeTab = 'text'"
+          role="tab"
+          :aria-selected="activeTab === 'text'"
+        >
+          📝 Paste Text
+        </button>
+        <button
+          id="tab-image"
+          class="tab-btn"
+          :class="{ active: activeTab === 'image' }"
+          @click="activeTab = 'image'"
+          role="tab"
+          :aria-selected="activeTab === 'image'"
+        >
+          📸 Upload Screenshot
+        </button>
+      </div>
+
+      <!-- Text Tab -->
+      <transition name="fade" mode="out-in">
+        <div v-if="activeTab === 'text'" key="text-panel">
+          <label class="field-label" for="notice-textarea">Notice / Posting Text</label>
+          <textarea
+            id="notice-textarea"
+            v-model="noticeText"
+            placeholder="Paste the full internship or job posting notice here...&#10;&#10;Example: 'XYZ Corp is hiring Software Engineering Interns for Summer 2025. Eligibility: B.Tech CS/IT, 7+ CGPA. Apply by April 30...'"
+          ></textarea>
+        </div>
+
+        <!-- Image Tab -->
+        <div v-else key="image-panel">
+          <label class="field-label">Screenshot of Notice</label>
+
+          <!-- File already selected — show preview -->
+          <div v-if="imagePreview" class="preview-wrap">
+            <img :src="imagePreview" alt="Uploaded notice screenshot" />
+            <button class="preview-remove" @click="clearImage" title="Remove image">✕</button>
+          </div>
+
+          <!-- Drop zone -->
+          <div
+            v-else
+            class="upload-zone"
+            :class="{ dragging: isDragging }"
+            @dragover.prevent="isDragging = true"
+            @dragleave="isDragging = false"
+            @drop.prevent="handleDrop"
+            @click="$refs.fileInput.click()"
+            id="upload-drop-zone"
+          >
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/*"
+              @change="handleFileChange"
+              style="display:none"
+              id="file-input"
+            />
+            <span class="upload-icon">🖼️</span>
+            <div class="upload-text">Drop your screenshot here</div>
+            <div class="upload-hint">or click to browse &nbsp;·&nbsp; JPG, PNG, WebP, GIF</div>
+          </div>
+        </div>
+      </transition>
+
+      <!-- Error display -->
+      <transition name="fade">
+        <div v-if="errorMsg" class="error-banner" role="alert">
+          ⚠️ {{ errorMsg }}
+        </div>
+      </transition>
+
+      <!-- Submit Button -->
+      <button
+        id="btn-generate"
+        class="btn-primary"
+        @click="analyze"
+        :disabled="isLoading || (!noticeText.trim() && !imageBase64)"
+      >
+        <span v-if="isLoading" class="spinner"></span>
+        <span v-else>⚡</span>
+        {{ isLoading ? 'Analyzing with AI...' : 'Generate Action Plan' }}
+      </button>
+    </div>
+
+    <!-- Result Section -->
+    <transition name="slide">
+      <div v-if="result" class="result-section" id="result-section">
+        <div class="result-header">
+          <div class="result-title">Your Action Plan</div>
+          <button class="copy-btn" @click="copyResult" id="btn-copy">
+            {{ copied ? '✅ Copied!' : '📋 Copy' }}
+          </button>
+        </div>
+        <div class="markdown-body" v-html="renderedMarkdown"></div>
+      </div>
+    </transition>
+
+    <!-- Footer -->
+    <footer>
+      <p>Built with ❤️ using Flask + Vue.js &nbsp;·&nbsp; Powered by Google Gemini</p>
+    </footer>
+
+  </div>
+</div>
+
+<script>
+const { createApp, ref, computed } = Vue;
+
+createApp({
+  setup() {
+    // ── State ──
+    const activeTab     = ref('text');
+    const noticeText    = ref('');
+    const imageBase64   = ref('');
+    const imageMimeType = ref('image/png');
+    const imagePreview  = ref('');
+    const isDragging    = ref(false);
+    const isLoading     = ref(false);
+    const result        = ref('');
+    const errorMsg      = ref('');
+    const copied        = ref(false);
+    const fileInput     = ref(null);
+
+    // ── Computed: render markdown ──
+    const renderedMarkdown = computed(() => {
+      if (!result.value) return '';
+      // Configure marked for GitHub Flavored Markdown incl. task lists
+      marked.setOptions({
+        breaks: true,
+        gfm: true,
+      });
+      // Enable checkbox rendering for task lists
+      const renderer = new marked.Renderer();
+      renderer.listitem = function(text) {
+        const checkboxMatch = text.match(/^\[(x| )\] (.*)/s);
+        if (checkboxMatch) {
+          const checked = checkboxMatch[1] === 'x';
+          return `<li><input type="checkbox" ${checked ? 'checked' : ''} disabled /> ${checkboxMatch[2]}</li>`;
+        }
+        return `<li>${text}</li>`;
+      };
+      return marked.parse(result.value, { renderer });
+    });
+
+    // ── File Handling ──
+    function handleFileChange(event) {
+      const file = event.target.files[0];
+      if (file) processFile(file);
+    }
+
+    function handleDrop(event) {
+      isDragging.value = false;
+      const file = event.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) {
+        processFile(file);
+      } else {
+        errorMsg.value = 'Please drop an image file (JPG, PNG, WebP, GIF).';
+      }
+    }
+
+    function processFile(file) {
+      errorMsg.value = '';
+      imageMimeType.value = file.type || 'image/png';
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target.result;
+        imagePreview.value = dataUrl;
+        // Strip "data:image/...;base64," prefix → raw base64
+        imageBase64.value = dataUrl.split(',')[1];
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearImage() {
+      imagePreview.value = '';
+      imageBase64.value  = '';
+      imageMimeType.value = 'image/png';
+      if (fileInput.value) fileInput.value.value = '';
+    }
+
+    // ── Analyze ──
+    async function analyze() {
+      errorMsg.value = '';
+      result.value   = '';
+
+      if (!noticeText.value.trim() && !imageBase64.value) {
+        errorMsg.value = 'Please paste a notice text or upload a screenshot first.';
+        return;
+      }
+
+      isLoading.value = true;
+      try {
+        const payload = {
+          notice_text:  noticeText.value.trim(),
+          image_base64: imageBase64.value,
+          mime_type:    imageMimeType.value,
+        };
+
+        const response = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+          errorMsg.value = data.error || 'An unexpected error occurred. Please try again.';
+        } else {
+          result.value = data.result;
+          // Scroll to result
+          setTimeout(() => {
+            const el = document.getElementById('result-section');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
+        }
+      } catch (err) {
+        errorMsg.value = `Network error: ${err.message}. Is the Flask server running?`;
+      } finally {
+        isLoading.value = false;
+      }
+    }
+
+    // ── Copy to clipboard ──
+    async function copyResult() {
+      try {
+        await navigator.clipboard.writeText(result.value);
+        copied.value = true;
+        setTimeout(() => { copied.value = false; }, 2500);
+      } catch {
+        errorMsg.value = 'Could not copy — please select and copy manually.';
+      }
+    }
+
+    return {
+      activeTab, noticeText, imageBase64, imageMimeType,
+      imagePreview, isDragging, isLoading, result,
+      errorMsg, copied, fileInput, renderedMarkdown,
+      handleFileChange, handleDrop, clearImage, analyze, copyResult,
+    };
+  }
+}).mount('#app');
+</script>
+{% endraw %}
+</body>
+</html>
