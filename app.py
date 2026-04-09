@@ -1,64 +1,153 @@
-import streamlit as st
-from google.adk.agents import Agent
-from google.adk.runners import Runner
-from dotenv import load_dotenv
 import os
+import base64
+from flask import Flask, request, jsonify, render_template
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 
-# Load environment variables
+# ─── Setup ────────────────────────────────────────────────────────────────────
 load_dotenv()
 
-# Get API key
-api_key = os.getenv("GOOGLE_API_KEY")
+app = Flask(__name__)
 
-# Create Agent
-agent = Agent(
-    model="gemini-2.5-flash",
-    name="Internship_Assistant",
-    instruction="""You are an expert career coach. 
-    Analyze the provided internship/job notice. 
-    Return a structured response: 
-    1. Summary (Company, Role, Deadline)
-    2. Eligibility Criteria
-    3. Required Documents
-    4. A 'Ready-to-Send' Application Email draft.
-    Use Markdown formatting with bold headers."""
-)
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+if not GOOGLE_API_KEY:
+    raise ValueError("GOOGLE_API_KEY not set in .env file")
+
+client = genai.Client(api_key=GOOGLE_API_KEY)
+
+# ─── Engineered System Prompt ─────────────────────────────────────────────────
+SYSTEM_PROMPT = """
+You are an elite university career placement counselor and application coach with 15+ years of experience helping students land competitive internships at top companies.
+
+A student has shared an internship or job posting notice with you (either as text or an image screenshot). Your job is to analyze it thoroughly and produce a detailed, structured student-friendly action plan.
+
+STRICT OUTPUT FORMAT (use exactly these Markdown headers):
+
+## 📋 Opportunity Snapshot
+Create a table with the following fields (fill in "Not mentioned" if info is missing):
+| Field | Details |
+|---|---|
+| 🏢 Company / Organization | ... |
+| 💼 Role / Position | ... |
+| 📍 Location / Mode | ... |
+| 🗓️ Application Deadline | ... |
+| 💰 Stipend / Salary | ... |
+| ⏳ Duration | ... |
+
+## ✅ Eligibility Criteria
+List all eligibility conditions as bullet points. If years/CGPA/skills are mentioned, bold them. If none stated, write "Open to all — verify with the company."
+
+## 📁 Required Documents Checklist
+List each document as a checkbox item:
+- [ ] Resume / CV
+- [ ] ... (add others from the notice)
+
+## 📧 Ready-to-Send Application Email
+Write a complete, professional email. Include:
+- A compelling subject line
+- Formal greeting
+- A strong opening hook (1 sentence about why you want THIS specific role)
+- 2-3 sentences showing relevant skills/experience
+- Mention of attached documents
+- Professional closing
+
+Format it exactly like this:
+**Subject:** [Subject line here]
+
+**Body:**
+[Full email body here]
+
+## ⚡ Smart Action Tips
+Give exactly 4 personalized, specific tips for THIS role/company to maximize the student's chances. Make them actionable and specific — not generic advice.
+
+---
+IMPORTANT RULES:
+- If given an image, extract ALL text from it first, then analyze
+- Use the EXACT Markdown headers above — do not change them
+- Be specific and practical — avoid generic filler advice
+- If the notice is in another language, respond in English
+"""
 
 
+def analyze_with_gemini(notice_text: str = None, image_base64: str = None, mime_type: str = None):
+    """Call Gemini with text and/or image input using the new google.genai SDK."""
 
-st.title("🎓 Internship Notice Assistant")
-st.write("Turn messy placement notices into action plans instantly.")
+    contents = []
 
-notice_text = st.text_area("Paste the Internship/Placement Notice here:", height=200)
-
-import asyncio
-from google.adk.runners import Runner
-
-if st.button("Generate Action Plan"):
-    if notice_text:
-        with st.spinner("Agent is analyzing..."):
-            from google.adk.sessions.in_memory_session_service import InMemorySessionService
-
-            session_service = InMemorySessionService()
-            runner = Runner(
-                agent=agent,
-                app_name="internship-assistant",
-                session_service=session_service,
-                auto_create_session=True
+    if image_base64:
+        # Inline image part
+        image_bytes = base64.b64decode(image_base64)
+        contents.append(
+            types.Part.from_bytes(
+                data=image_bytes,
+                mime_type=mime_type or "image/png"
             )
+        )
+        contents.append(
+            types.Part.from_text(
+                text="Please extract all text from this notice image and then analyze it as described in your instructions."
+            )
+        )
 
-            # run_debug evaluates the message and returns the collected events asynchronously
-            try:
-                events = asyncio.run(
-                    runner.run_debug(notice_text, quiet=True)
-                )
+    if notice_text and notice_text.strip():
+        contents.append(
+            types.Part.from_text(
+                text=f"Here is the internship/job notice text to analyze:\n\n{notice_text.strip()}"
+            )
+        )
 
-                # extract the text from the last event
-                response = events[-1].output_text if hasattr(events[-1], 'output_text') else events[-1].text
+    if not contents:
+        raise ValueError("No input provided — please paste text or upload a screenshot.")
 
-                st.markdown("---")
-                st.markdown(response)
-            except Exception as e:
-                st.error(f"⚠️ Failed to generate action plan. The API may be experiencing high demand (Error: {e}). Please try again later.")
-    else:
-        st.warning("Please paste a notice first!")
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=contents,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            temperature=0.4,
+            max_output_tokens=2048,
+        )
+    )
+
+    return response.text
+
+
+# ─── Routes ───────────────────────────────────────────────────────────────────
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/api/analyze", methods=["POST"])
+def analyze():
+    """
+    Accepts JSON body:
+      { "notice_text": "...", "image_base64": "...", "mime_type": "image/png" }
+    Returns:
+      { "result": "... markdown string ..." }
+    """
+    try:
+        data = request.get_json(force=True)
+        notice_text  = data.get("notice_text", "").strip()
+        image_base64 = data.get("image_base64", None)
+        mime_type    = data.get("mime_type", "image/png")
+
+        if not notice_text and not image_base64:
+            return jsonify({"error": "Please paste a notice or upload a screenshot."}), 400
+
+        result = analyze_with_gemini(
+            notice_text=notice_text if notice_text else None,
+            image_base64=image_base64 if image_base64 else None,
+            mime_type=mime_type
+        )
+        return jsonify({"result": result})
+
+    except Exception as e:
+        return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
+
+
+# ─── Run ──────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
